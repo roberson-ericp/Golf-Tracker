@@ -7,13 +7,22 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        fontFamily: { serif: ['Georgia', 'Times New Roman', 'serif'] }
+      }
+    }
+  }
+</script>
 <style>
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-body { background: #09090b; color: #fff; font-family: Georgia, 'Times New Roman', serif; min-height: 100vh; }
-::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: #18181b; } ::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 3px; }
-select { appearance: none; -webkit-appearance: none; }
-input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
-.tab-active { background: #3f3f46 !important; color: #fff !important; }
+  body { font-family: Georgia, 'Times New Roman', serif; }
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: #18181b; }
+  ::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 3px; }
+  input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
 </style>
 </head>
 <body>
