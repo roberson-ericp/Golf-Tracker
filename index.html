@@ -1,0 +1,1936 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Golf Practice Tracker</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #09090b; color: #fff; font-family: Georgia, 'Times New Roman', serif; min-height: 100vh; }
+::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: #18181b; } ::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 3px; }
+select { appearance: none; -webkit-appearance: none; }
+input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; }
+.tab-active { background: #3f3f46 !important; color: #fff !important; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useCallback, useEffect } = React;
+
+// ─── DATA ─────────────────────────────────────────────────────────────────────
+
+const FACE_STRIKE_LEVELS = [
+  { level: 1, differential: "Clubhead split in 2 — strike toe or heel, putting swing (7/10)", variability: "Set up toe or heel — strike grooved part of face, putting swing (7/10)", calibration: "Strike middle third (grooved face), putting swing (7/10)" },
+  { level: 2, differential: "Clubhead split in 2 — strike toe or heel, chipping swing (7/10)", variability: "Set up toe or heel — strike grooved part of face, chipping swing (7/10)", calibration: "Strike middle third (grooved face), chipping swing (7/10)" },
+  { level: 3, differential: "Clubhead split in 2 — strike toe or heel, pitching swing (7/10)", variability: "Set up toe or heel — strike grooved part of face, pitching swing (7/10)", calibration: "Strike middle third (grooved face), pitching swing (7/10)" },
+  { level: 4, differential: "Clubhead split in 2 — strike toe or heel, full swing (7/10)", variability: "Set up toe or heel — strike grooved part of face, full swing (7/10)", calibration: "Strike middle third (grooved face), full swing (7/10)" },
+  { level: 5, differential: "Grooved face halved — strike toe or heel, full swing (7/10)", variability: "Grooved face halved — set up on one side, strike opposing half, full swing (7/10)", calibration: "Strike middle third — alternating clubs (7i/W), full swing (7/10)" },
+  { level: 6, differential: "Grooved face thirds — strike toe or heel third, full swing (7/10)", variability: "Grooved face thirds — set up toe/heel, strike middle third, full swing (7/10)", calibration: "Strike middle third — alternating clubs (4i/7i/W), full swing (7/10)" },
+  { level: 7, differential: "Clubhead halved — big/small (full clubhead), full swing (7/10)", variability: "Strike middle third — set up small/big heel or toe, full swing (7/10)", calibration: "Strike middle fifth — full swing, one club (7/10)" },
+  { level: 8, differential: "Grooved face halved — big/small, repeat 4×, full swing (6/8)", variability: "Strike middle third — set up small/medium/big heel or toe, full swing (6/9)", calibration: "Strike middle fifth — alternating clubs (7i/W), full swing (7/10)" },
+  { level: 9, differential: "Big/medium/small (grooved face halved) — repeat 3×, full swing (6/9)", variability: "Introduce target (8 fingers) (6/9)", calibration: "Introduce target (8 fingers) (7/10)" },
+  { level: 10, differential: "Introduce target (8 fingers) — full swing (6/9)", variability: "6-finger target (6/9)", calibration: "6-finger target (7/10)" },
+];
+
+const FACE_DIRECTION_LEVELS = [
+  { level: 1, differential: "0–6 fingers R or L, putting swing, square alignment", variability: "–3 to +3 fingers, align to outer boundaries, putting swing", calibration: "–2 to +2 fingers, putting swing" },
+  { level: 2, differential: "0–6 fingers R or L, chipping swing, square alignment", variability: "–3 to +3 fingers, align to outer boundaries, chipping swing", calibration: "–2 to +2 fingers, chipping swing" },
+  { level: 3, differential: "0–6 fingers R or L, pitching swing, square alignment", variability: "–3 to +3 fingers, align to outer boundaries, pitching swing", calibration: "–2 to +2 fingers, pitching swing" },
+  { level: 4, differential: "0–6 fingers R or L, full swing, square alignment", variability: "–3 to +3 fingers, align L or R boundary, full swing", calibration: "–2 to +2 fingers, full swing" },
+  { level: 5, differential: "0–4 fingers R or L, full swing, square alignment", variability: "–2 to +2 fingers, align L or R boundary, full swing", calibration: "–2 to +2 fingers, full swing; alternate clubs (9i/7i)" },
+  { level: 6, differential: "0–4 fingers, alternating R/L, full swing, square alignment", variability: "–2 to +2 fingers, alternate alignment, full swing", calibration: "3-finger target, full swing" },
+  { level: 7, differential: "4–8 then 0–4 fingers R/L, full swing, square alignment", variability: "–2 to +2 fingers, open/close face (small) THEN grip, full swing", calibration: "3-finger target, full swing; alternate clubs (9i/7i)" },
+  { level: 8, differential: "3–6 then 0–3 fingers R/L, full swing, –2 to +2 fingers", variability: "Open/close face (small/large) THEN grip, full swing", calibration: "3-finger target, full swing; alternate clubs (9i/7i/4i)" },
+  { level: 9, differential: "0–3, 3–6, then 6–9 R/L, full swing, 3-finger target", variability: "Open/close face (small/large) THEN grip, full swing", calibration: "2-finger target, full swing; alternate clubs (9i/7i)" },
+  { level: 10, differential: "0–2, 2–4, 4–6 R then L, full swing, 2-finger target", variability: "Open/close face (small/large) THEN grip, full swing", calibration: "2-finger target, full swing; alternate clubs (9i/7i/4i)" },
+];
+
+const SHOT_SHAPES = ["Draw", "Fade", "Straight", "High Draw", "High Fade", "Low Draw", "Low Fade", "Punch"];
+const DISTANCES = [80, 100, 120, 140, 150, 160, 170, 180, 200, 220, 240, 260];
+const TARGETS = ["Left", "Center-Left", "Center", "Center-Right", "Right"];
+const TROUBLE = ["Left", "Right", "Long", "Short", "Both Sides"];
+
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
+
+function rand(arr) {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+// ─── LOCAL STORAGE HOOK ───────────────────────────────────────────────────────
+function useLocalStorage(key, defaultVal) {
+  const [val, setVal] = React.useState(() => {
+    try { const s = localStorage.getItem(key); return s ? JSON.parse(s) : defaultVal; }
+    catch { return defaultVal; }
+  });
+  React.useEffect(() => { try { localStorage.setItem(key, JSON.stringify(val)); } catch {} }, [key, val]);
+  return [val, setVal];
+}
+
+function downloadCSV(csv, filename) {
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href = url; a.download = filename; a.click();
+  URL.revokeObjectURL(url);
+}
+
+
+
+function today() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+// Build CSV string from array of flat row objects.
+function buildCSV(rows) {
+  if (!rows || rows.length === 0) return "";
+  const cols = Object.keys(rows[0]);
+  const escape = v => {
+    const s = v === null || v === undefined ? "" : String(v);
+    return s.includes(",") || s.includes('"') || s.includes("\n")
+      ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  return [cols.join(","), ...rows.map(r => cols.map(c => escape(r[c])).join(","))].join("\n");
+}
+
+// ─── SHEETS EXPORT ────────────────────────────────────────────────────────────
+
+// Push rows to Google Sheets via Apps Script webhook.
+// Uses GET + query param instead of POST to avoid CORS preflight blocking.
+async function pushToSheets(webhookUrl, sheetName, rows) {
+  if (!rows || rows.length === 0) return { ok: false, error: "No data to export." };
+  const headers = Object.keys(rows[0]);
+  const values  = rows.map(r => headers.map(h => r[h] === null || r[h] === undefined ? "" : String(r[h])));
+  const payload = encodeURIComponent(JSON.stringify({ sheetName, headers, values }));
+  const url     = `${webhookUrl}?payload=${payload}`;
+  const res     = await fetch(url, { method: "GET" });
+  if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
+  const text = await res.text();
+  try {
+    const json = JSON.parse(text);
+    return json.result === "ok" ? { ok: true } : { ok: false, error: json.error || text };
+  } catch {
+    return text.includes("ok") ? { ok: true } : { ok: false, error: text };
+  }
+}
+
+// Fallback CSV copy modal — shown when no webhook is configured
+function CsvModal({ csv, filename, onClose }) {
+  const [copied, setCopied] = useState(false);
+  function copy() {
+    try {
+      navigator.clipboard.writeText(csv).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
+    } catch {
+      const ta = document.getElementById("export-csv-ta");
+      if (ta) { ta.select(); document.execCommand("copy"); setCopied(true); setTimeout(() => setCopied(false), 2000); }
+    }
+  }
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4" onClick={onClose}>
+      <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-lg p-5 shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <p className="text-white font-black text-sm">Export — Copy CSV</p>
+            <p className="text-zinc-500 text-xs mt-0.5">{filename} · Add a Sheets webhook in ⚙ Settings to push directly</p>
+          </div>
+          <button onClick={onClose} className="text-zinc-500 hover:text-white text-xl font-bold leading-none">✕</button>
+        </div>
+        <textarea id="export-csv-ta" readOnly value={csv} rows={10}
+          className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 text-xs text-zinc-300 font-mono focus:outline-none resize-none" />
+        <div className="flex gap-3 mt-3">
+          <button onClick={copy}
+            className={`flex-1 py-2.5 rounded-xl font-bold text-sm transition-all ${copied ? "bg-emerald-700 text-white" : "bg-zinc-700 hover:bg-zinc-600 text-white"}`}>
+            {copied ? "✓ Copied!" : "Copy to Clipboard"}
+          </button>
+          <button onClick={onClose} className="px-4 py-2.5 rounded-xl text-zinc-400 hover:text-white text-sm font-semibold">Close</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Status toast shown after a Sheets push attempt
+function SheetsToast({ status, onClose }) {
+  // status: "pushing" | "ok" | { error: string }
+  return (
+    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 w-full max-w-sm">
+      <div className={`rounded-2xl px-4 py-3 shadow-2xl border flex items-center justify-between gap-3 ${
+        status === "pushing" ? "bg-zinc-800 border-zinc-600 text-zinc-300" :
+        status === "ok"      ? "bg-emerald-900 border-emerald-700 text-emerald-200" :
+                               "bg-rose-900 border-rose-700 text-rose-200"
+      }`}>
+        <span className="text-sm font-bold">
+          {status === "pushing" && "⏳ Sending to Google Sheets…"}
+          {status === "ok"      && "✓ Exported to Google Sheets"}
+          {status?.error        && `✗ ${status.error}`}
+        </span>
+        <button onClick={onClose} className="text-lg font-bold opacity-60 hover:opacity-100 leading-none">✕</button>
+      </div>
+    </div>
+  );
+}
+
+function ExportButton({ onClick, disabled }) {
+  return (
+    <button onClick={onClick} disabled={disabled}
+      className={`flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-lg border transition-all ${
+        disabled
+          ? "text-zinc-700 border-zinc-800 cursor-not-allowed"
+          : "text-zinc-400 border-zinc-700 hover:text-white hover:border-zinc-500"
+      }`}>
+      ↑ Export
+    </button>
+  );
+}
+
+// ─── SETTINGS TAB ─────────────────────────────────────────────────────────────
+
+function SettingsTab({ webhookUrl, setWebhookUrl }) {
+  const [draft, setDraft] = useState(webhookUrl);
+  const [saved, setSaved] = useState(false);
+
+  function save() {
+    setWebhookUrl(draft.trim());
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  }
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h2 className="text-2xl font-black text-white tracking-tight">Settings</h2>
+        <p className="text-zinc-500 text-sm mt-0.5">Google Sheets webhook configuration</p>
+      </div>
+
+      {/* Webhook URL input */}
+      <Card>
+        <SectionLabel>Apps Script Webhook URL</SectionLabel>
+        <p className="text-zinc-500 text-xs mt-1 mb-3">
+          Once configured, every Export button pushes data directly to your Google Sheet — no clipboard needed.
+        </p>
+        <input
+          type="url"
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          placeholder="https://script.google.com/macros/s/…/exec"
+          className="w-full bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 font-mono"
+        />
+        <button onClick={save}
+          className={`w-full mt-3 py-2.5 rounded-xl font-bold text-sm transition-all ${saved ? "bg-emerald-700 text-white" : "bg-zinc-700 hover:bg-zinc-600 text-white"}`}>
+          {saved ? "✓ Saved" : "Save URL"}
+        </button>
+        {webhookUrl && (
+          <div className="mt-3 flex items-center gap-2 p-2.5 rounded-lg bg-emerald-900/30 border border-emerald-800/40">
+            <span className="text-emerald-400 text-xs">●</span>
+            <span className="text-emerald-300 text-xs font-semibold">Webhook active — exports will push to Sheets</span>
+          </div>
+        )}
+      </Card>
+
+      {/* Setup instructions */}
+      <Card>
+        <SectionLabel>Setup Instructions</SectionLabel>
+        <div className="mt-3 space-y-4 text-sm text-zinc-400 leading-relaxed">
+
+          <div className="flex gap-3">
+            <span className="text-emerald-400 font-black shrink-0">1</span>
+            <div>
+              <p className="text-white font-semibold">Create a Google Sheet</p>
+              <p>Open <span className="text-zinc-300">sheets.google.com</span> and create a new spreadsheet. Name it anything — e.g. <em>Golf Practice Log</em>. Copy its URL; you won't need it in the app but keep it handy.</p>
+            </div>
+          </div>
+
+          <div className="flex gap-3">
+            <span className="text-emerald-400 font-black shrink-0">2</span>
+            <div>
+              <p className="text-white font-semibold">Open Apps Script</p>
+              <p>In your Sheet, click <span className="text-zinc-300">Extensions → Apps Script</span>. Delete any placeholder code in the editor.</p>
+            </div>
+          </div>
+
+          <div className="flex gap-3">
+            <span className="text-emerald-400 font-black shrink-0">3</span>
+            <div>
+              <p className="text-white font-semibold">Paste the webhook script</p>
+              <p>Copy the script from the <span className="text-zinc-300">golf_logger_webhook.gs</span> file provided alongside this app. Paste it into the Apps Script editor and click <span className="text-zinc-300">Save</span> (disk icon).</p>
+            </div>
+          </div>
+
+          <div className="flex gap-3">
+            <span className="text-emerald-400 font-black shrink-0">4</span>
+            <div>
+              <p className="text-white font-semibold">Deploy as Web App</p>
+              <p>Click <span className="text-zinc-300">Deploy → New deployment</span>. Set type to <span className="text-zinc-300">Web app</span>. Set <em>Execute as</em> to <span className="text-zinc-300">Me</span> and <em>Who has access</em> to <span className="text-zinc-300">Anyone</span>. Click <span className="text-zinc-300">Deploy</span> and authorize when prompted.</p>
+            </div>
+          </div>
+
+          <div className="flex gap-3">
+            <span className="text-emerald-400 font-black shrink-0">5</span>
+            <div>
+              <p className="text-white font-semibold">Copy the Web App URL</p>
+              <p>After deploying, copy the <span className="text-zinc-300">/exec</span> URL shown. It looks like:<br/>
+              <span className="text-zinc-300 font-mono text-xs break-all">https://script.google.com/macros/s/ABC…/exec</span></p>
+            </div>
+          </div>
+
+          <div className="flex gap-3">
+            <span className="text-emerald-400 font-black shrink-0">6</span>
+            <div>
+              <p className="text-white font-semibold">Paste URL above and save</p>
+              <p>Paste that URL into the field above and hit Save. Every Export button will now push directly to your Sheet, creating a new tab per data type.</p>
+            </div>
+          </div>
+
+          <div className="p-3 rounded-xl bg-amber-900/20 border border-amber-800/40 text-xs text-amber-300">
+            <span className="font-semibold">Note on "Anyone" access: </span>
+            This means anyone with the URL can append rows — it does not expose your existing Sheet data. For higher security, redeploy with <em>Anyone with Google account</em> and sign in when prompted.
+          </div>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+// ─── SHARED COMPONENTS ────────────────────────────────────────────────────────
+
+function Badge({ children, color = "emerald" }) {
+  const map = {
+    emerald: "bg-emerald-900/60 text-emerald-300 border border-emerald-700",
+    amber: "bg-amber-900/60 text-amber-300 border border-amber-700",
+    sky: "bg-sky-900/60 text-sky-300 border border-sky-700",
+    rose: "bg-rose-900/60 text-rose-300 border border-rose-700",
+    violet: "bg-violet-900/60 text-violet-300 border border-violet-700",
+  };
+  return (
+    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${map[color]}`}>
+      {children}
+    </span>
+  );
+}
+
+function Card({ children, className = "" }) {
+  return (
+    <div className={`rounded-2xl bg-zinc-900 border border-zinc-800 p-5 ${className}`}>
+      {children}
+    </div>
+  );
+}
+
+function SectionLabel({ children }) {
+  return (
+    <p className="text-xs font-bold tracking-widest text-zinc-500 uppercase mb-1">{children}</p>
+  );
+}
+
+function ScoreInput({ value, onChange, min = 0, max = 30 }) {
+  return (
+    <div className="flex items-center gap-2">
+      <button
+        onClick={() => onChange(Math.max(min, value - 1))}
+        className="w-8 h-8 rounded-lg bg-zinc-800 text-zinc-300 font-bold text-lg hover:bg-zinc-700 transition-colors flex items-center justify-center"
+      >−</button>
+      <span className="w-10 text-center text-xl font-bold text-white tabular-nums">{value}</span>
+      <button
+        onClick={() => onChange(Math.min(max, value + 1))}
+        className="w-8 h-8 rounded-lg bg-zinc-800 text-zinc-300 font-bold text-lg hover:bg-zinc-700 transition-colors flex items-center justify-center"
+      >+</button>
+    </div>
+  );
+}
+
+// ─── MODULE 1: FACE STRIKE ─────────────────────────────────────────────────────
+//
+// Face Contact Zone Map (7 iron, from the Week 1 data-gathering video):
+//   +3 = extreme toe (outside grooves)
+//   +2 = toe (outside grooves)
+//   +1 = toe-side of grooved face  ┐
+//    0 = center of grooved face    ├── yellow "grooved" zone (sweet spot region)
+//   −1 = heel-side of grooved face ┘
+//   −2 = heel (outside grooves)
+//   −3 = extreme heel / shank
+//
+// Positive = toe bias. Negative = heel bias.
+//
+// Calibration scoring (Week 1 test — 10 shots, 7 iron):
+//   Record each shot's zone value (−3 to +3).
+//   Total   = sum of ABSOLUTE values (lower = better; best = 0)
+//   Average = signed sum ÷ 10 (reveals bias; negative = toe, positive = heel)
+//   Std Dev = consistency measure
+
+const FACE_ZONES = [
+  { value: 3,  label: "+3",  desc: "Extreme Toe",        grooved: false, colorClass: "bg-rose-900/60 border-rose-700 text-rose-300" },
+  { value: 2,  label: "+2",  desc: "Toe",                grooved: false, colorClass: "bg-amber-900/60 border-amber-700 text-amber-300" },
+  { value: 1,  label: "+1",  desc: "Toe (grooved)",      grooved: true,  colorClass: "bg-emerald-900/60 border-emerald-700 text-emerald-300" },
+  { value: 0,  label: "0",   desc: "Center (sweet spot)",grooved: true,  colorClass: "bg-emerald-800/80 border-emerald-500 text-emerald-200" },
+  { value: -1, label: "−1",  desc: "Heel (grooved)",     grooved: true,  colorClass: "bg-emerald-900/60 border-emerald-700 text-emerald-300" },
+  { value: -2, label: "−2",  desc: "Heel",               grooved: false, colorClass: "bg-amber-900/60 border-amber-700 text-amber-300" },
+  { value: -3, label: "−3",  desc: "Extreme Heel/Shank", grooved: false, colorClass: "bg-rose-900/60 border-rose-700 text-rose-300" },
+];
+
+const EXPRESS_DRILLS = {
+  differential: {
+    label: "Differential",
+    color: "sky",
+    totalShots: 30,
+    shotDesc: "6 sections × 5 shots = 30 total",
+    higherBetter: true,
+    passThreshold: null,
+    instructions: [
+      "Target each of the 6 non-center zones (+3, +2, +1, −1, −2, −3) with 5 shots each — 30 total.",
+      "Score = number of shots landing in the correct target section.",
+      "Grooved-face strikes only — exclude shanks/extreme mishits from the count.",
+      "Higher score = better ability to intentionally vary strike location.",
+    ],
+    scoreLabel: "Successful hits (out of 30)",
+    scoreMax: 30,
+  },
+  variability: {
+    label: "Variability",
+    color: "amber",
+    totalShots: 10,
+    shotDesc: "10 shots — return to grooved zone from off-center setup",
+    higherBetter: true,
+    passThreshold: 7,
+    instructions: [
+      "Goal: return to grooved zone (+1 / 0 / −1) regardless of setup position.",
+      "5 shots set up toward the toe, 5 shots set up toward the heel.",
+      "Start with chipping swings; advance to full swings at 7/10 success.",
+      "Score = number of shots contacting the grooved face zone.",
+    ],
+    scoreLabel: "Returns to grooved zone (out of 10)",
+    scoreMax: 10,
+  },
+  calibration: {
+    label: "Calibration",
+    color: "violet",
+    totalShots: 10,
+    shotDesc: "10 shots — Week 1 baseline data test (7 iron)",
+    higherBetter: false,
+    passThreshold: null,
+    instructions: [
+      "Hit 10 normal shots with a 7 iron — no intentional manipulation.",
+      "Record each shot's zone (−3 to +3) using impact tape or face spray.",
+      "Total = sum of absolute values (best = 0). Lower = better.",
+      "Average = signed sum ÷ 10. Negative = toe bias; positive = heel bias.",
+      "Standard deviation = your consistency measure.",
+    ],
+    scoreLabel: "Enter each shot's zone below",
+    scoreMax: 30,
+  },
+};
+
+// Level-based: each level has 3 columns; success threshold embedded in label
+const LEVEL_SUCCESS = {
+  // [passTarget, totalShots] — most are 7/10 except levels 8–10
+  1: { differential: [7,10], variability: [7,10], calibration: [7,10] },
+  2: { differential: [7,10], variability: [7,10], calibration: [7,10] },
+  3: { differential: [7,10], variability: [7,10], calibration: [7,10] },
+  4: { differential: [7,10], variability: [7,10], calibration: [7,10] },
+  5: { differential: [7,10], variability: [7,10], calibration: [7,10] },
+  6: { differential: [7,10], variability: [7,10], calibration: [7,10] },
+  7: { differential: [7,10], variability: [7,10], calibration: [7,10] },
+  8: { differential: [6,8],  variability: [6,9],  calibration: [7,10] },
+  9: { differential: [6,9],  variability: [6,9],  calibration: [7,10] },
+  10:{ differential: [6,9],  variability: [6,9],  calibration: [7,10] },
+};
+
+// ── Stats helpers ──────────────────────────────────────────────────────────────
+function calcStats(shots) {
+  const vals = shots.filter(v => v !== null);
+  if (!vals.length) return { total: 0, avg: 0, sd: 0 };
+  const total = vals.reduce((s, v) => s + Math.abs(v), 0);
+  const avg = vals.reduce((s, v) => s + v, 0) / vals.length;
+  const sd = vals.length > 1
+    ? Math.sqrt(vals.reduce((s, v) => s + (v - avg) ** 2, 0) / vals.length)
+    : 0;
+  return { total, avg: +avg.toFixed(2), sd: +sd.toFixed(2) };
+}
+
+// Face zone button grid — shared by strike calibration and direction calibration
+function ZoneGrid({ zones, onSelect, selectedVal, compact = false }) {
+  return (
+    <div className={`grid gap-1.5 ${compact ? "grid-cols-7" : "grid-cols-7"}`}>
+      {zones.map(z => (
+        <button
+          key={z.value}
+          onClick={() => onSelect(z.value)}
+          className={`rounded-lg border text-xs font-bold py-2 transition-all ${z.colorClass} ${
+            selectedVal === z.value ? "ring-2 ring-white/60 scale-105" : "opacity-70 hover:opacity-100"
+          }`}
+        >
+          {z.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// Shot log row — shows entered shots with tap-to-remove
+function ShotLog({ shots, onRemove }) {
+  return (
+    <div className="flex flex-wrap gap-1.5 min-h-8">
+      {shots.map((v, i) => {
+        const z = FACE_ZONES.find(z => z.value === v) || { label: String(v), colorClass: "bg-zinc-700 border-zinc-600 text-zinc-300" };
+        return (
+          <button key={i} onClick={() => onRemove(i)}
+            className={`text-xs font-bold px-2 py-1 rounded border ${z.colorClass} opacity-90 hover:opacity-100`}
+            title="Tap to remove">
+            {z.label}
+          </button>
+        );
+      })}
+      {shots.length === 0 && <p className="text-zinc-600 text-xs italic">No shots logged yet</p>}
+    </div>
+  );
+}
+
+function StatsDisplay({ stats, biasLabel }) {
+  const biasDir = stats.avg < -0.15 ? "Toe bias" : stats.avg > 0.15 ? "Heel bias" : "No bias";
+  const biasColor = stats.avg < -0.15 ? "text-amber-400" : stats.avg > 0.15 ? "text-sky-400" : "text-emerald-400";
+  return (
+    <div className="grid grid-cols-3 gap-2 mt-3">
+      <div className="rounded-xl bg-zinc-800 p-3 text-center">
+        <p className="text-zinc-500 text-xs mb-0.5">Total</p>
+        <p className={`font-black text-lg ${stats.total <= 5 ? "text-emerald-400" : stats.total <= 10 ? "text-amber-400" : "text-rose-400"}`}>{stats.total}</p>
+        <p className="text-zinc-600 text-xs">lower = better</p>
+      </div>
+      <div className="rounded-xl bg-zinc-800 p-3 text-center">
+        <p className="text-zinc-500 text-xs mb-0.5">Average</p>
+        <p className={`font-black text-lg ${biasColor}`}>{stats.avg > 0 ? "+" : ""}{stats.avg}</p>
+        <p className={`text-xs ${biasColor}`}>{biasDir}</p>
+      </div>
+      <div className="rounded-xl bg-zinc-800 p-3 text-center">
+        <p className="text-zinc-500 text-xs mb-0.5">Std Dev</p>
+        <p className={`font-black text-lg ${stats.sd <= 1 ? "text-emerald-400" : stats.sd <= 2 ? "text-amber-400" : "text-rose-400"}`}>{stats.sd}</p>
+        <p className="text-zinc-600 text-xs">consistency</p>
+      </div>
+    </div>
+  );
+}
+
+function FaceStrikeModule({ openExport }) {
+  const [mode, setMode] = useState("express");
+  const [activeColumn, setActiveColumn] = useState("differential");
+  const [level, setLevel] = useState(1);
+
+  // Express — differential & variability use simple counters; calibration uses shot-by-shot
+  const [exDiff, setExDiff] = useState(0);
+  const [exVar, setExVar]   = useState(0);
+  const [calShots, setCalShots] = useState([]); // array of zone values for calibration
+  const [exSessions, setExSessions] = useLocalStorage("fs_express_" + mode, []);
+
+  // Level-based
+  const [lvScores, setLvScores] = useState({ differential: 0, variability: 0, calibration: 0 });
+  const [lvSessions, setLvSessions] = useLocalStorage("fs_level_" + Date.now().toString().slice(0,-6), []);
+
+  const [notes, setNotes] = useState("");
+
+  const levelData = FACE_STRIKE_LEVELS[level - 1];
+  const lvThresh = LEVEL_SUCCESS[level][activeColumn];
+  const calStats = calcStats(calShots);
+
+  const colMeta = {
+    differential: { label: "Differential", color: "sky" },
+    variability:  { label: "Variability",  color: "amber" },
+    calibration:  { label: "Calibration",  color: "violet" },
+  };
+
+  function addCalShot(val) {
+    if (calShots.length < 10) setCalShots(s => [...s, val]);
+  }
+  function removeCalShot(idx) {
+    setCalShots(s => s.filter((_, i) => i !== idx));
+  }
+
+  function logExpress() {
+    setExSessions(prev => [{
+      date: today(),
+      diff: exDiff,
+      varScore: exVar,
+      calShots: [...calShots],
+      calStats: { ...calStats },
+      notes,
+    }, ...prev]);
+    setExDiff(0); setExVar(0); setCalShots([]); setNotes("");
+  }
+
+  function logLevel() {
+    const passed = lvScores[activeColumn] >= lvThresh[0];
+    setLvSessions(prev => [{
+      date: today(), level, column: activeColumn,
+      score: lvScores[activeColumn], total: lvThresh[1],
+      threshold: lvThresh[0], passed, notes,
+    }, ...prev]);
+    setLvScores(s => ({ ...s, [activeColumn]: 0 }));
+    setNotes("");
+  }
+
+  return (
+    <div className="space-y-5">
+
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-black text-white tracking-tight">Face Strike</h2>
+          <p className="text-zinc-500 text-sm mt-0.5">Strike zone precision · 7 iron</p>
+        </div>
+        <Badge color="sky">+toe · −heel</Badge>
+      </div>
+
+      {/* Zone map reference */}
+      <Card className="border-zinc-700/60">
+        <SectionLabel>Face Zone Map</SectionLabel>
+        <div className="grid grid-cols-7 gap-1 mt-2 text-center text-xs">
+          {FACE_ZONES.map(z => (
+            <div key={z.value} className={`rounded-lg border py-2 px-0.5 ${z.colorClass}`}>
+              <p className="font-black">{z.label}</p>
+              <p className="text-xs opacity-70 leading-tight mt-0.5 hidden sm:block">{z.grooved ? "✓" : ""}</p>
+            </div>
+          ))}
+        </div>
+        <div className="flex justify-between text-xs text-zinc-600 mt-1.5 px-1">
+          <span>← Toe</span>
+          <span className="text-emerald-700">✓ Grooved zone (+1 / 0 / −1)</span>
+          <span>Heel →</span>
+        </div>
+      </Card>
+
+      {/* Mode toggle */}
+      <div className="grid grid-cols-2 gap-2 bg-zinc-900 p-1 rounded-xl border border-zinc-800">
+        <button onClick={() => setMode("express")}
+          className={`py-2.5 rounded-lg text-sm font-bold transition-all ${mode === "express" ? "bg-zinc-700 text-white" : "text-zinc-500 hover:text-zinc-300"}`}>
+          ⚡ Express
+        </button>
+        <button onClick={() => setMode("level")}
+          className={`py-2.5 rounded-lg text-sm font-bold transition-all ${mode === "level" ? "bg-zinc-700 text-white" : "text-zinc-500 hover:text-zinc-300"}`}>
+          🏆 Level-Based
+        </button>
+      </div>
+
+      {/* ── EXPRESS MODE ─────────────────────────────────────────── */}
+      {mode === "express" && (
+        <>
+          {/* Column tabs */}
+          <div className="grid grid-cols-3 gap-2">
+            {Object.entries(colMeta).map(([key, meta]) => (
+              <button key={key} onClick={() => setActiveColumn(key)}
+                className={`rounded-xl p-3 text-left transition-all border ${activeColumn === key ? "bg-zinc-800 border-zinc-600" : "bg-zinc-900 border-zinc-800 opacity-60 hover:opacity-80"}`}>
+                <Badge color={meta.color}>{meta.label}</Badge>
+                <p className="text-zinc-400 text-xs mt-1.5 leading-snug">{EXPRESS_DRILLS[key].shotDesc}</p>
+              </button>
+            ))}
+          </div>
+
+          {/* Instructions */}
+          <Card className="border-zinc-700">
+            <div className="flex items-center justify-between mb-3">
+              <Badge color={EXPRESS_DRILLS[activeColumn].color}>{EXPRESS_DRILLS[activeColumn].label}</Badge>
+              <span className="text-zinc-500 text-xs">{EXPRESS_DRILLS[activeColumn].higherBetter ? "Higher = better" : "Lower = better"}</span>
+            </div>
+            <ul className="space-y-1.5">
+              {EXPRESS_DRILLS[activeColumn].instructions.map((step, i) => (
+                <li key={i} className="flex gap-2 text-xs text-zinc-400 leading-relaxed">
+                  <span className="text-zinc-600 font-bold shrink-0">{i + 1}.</span>
+                  <span>{step}</span>
+                </li>
+              ))}
+            </ul>
+            {EXPRESS_DRILLS[activeColumn].passThreshold && (
+              <div className="mt-3 px-3 py-2 rounded-lg bg-amber-900/30 border border-amber-800/40 text-xs text-amber-300">
+                ✓ Advance to full swings at {EXPRESS_DRILLS[activeColumn].passThreshold}/{EXPRESS_DRILLS[activeColumn].totalShots}
+              </div>
+            )}
+          </Card>
+
+          {/* Score entry — adapts per column */}
+          <Card>
+            <SectionLabel>Log Express Session</SectionLabel>
+
+            {/* Differential */}
+            <div className="flex items-center justify-between mt-3 pb-4 border-b border-zinc-800">
+              <div>
+                <Badge color="sky">Differential</Badge>
+                <p className="text-zinc-500 text-xs mt-0.5">Successful hits / 30</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <ScoreInput value={exDiff} onChange={setExDiff} max={30} />
+                <span className="text-zinc-600 text-xs">/30</span>
+              </div>
+            </div>
+
+            {/* Variability */}
+            <div className="flex items-center justify-between py-4 border-b border-zinc-800">
+              <div>
+                <Badge color="amber">Variability</Badge>
+                <p className="text-zinc-500 text-xs mt-0.5">Returns to grooved zone / 10</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <ScoreInput value={exVar} onChange={setExVar} max={10} />
+                <span className="text-zinc-600 text-xs">/10</span>
+              </div>
+            </div>
+
+            {/* Calibration — shot by shot */}
+            <div className="pt-4">
+              <div className="flex items-center justify-between mb-3">
+                <Badge color="violet">Calibration — Week 1 Test</Badge>
+                <span className="text-zinc-500 text-xs">{calShots.length}/10 shots</span>
+              </div>
+              <p className="text-zinc-500 text-xs mb-3">Tap a zone after each shot. Tap a logged shot to remove it.</p>
+              <ZoneGrid zones={FACE_ZONES} onSelect={addCalShot} selectedVal={null} />
+              <div className="mt-3">
+                <ShotLog shots={calShots} onRemove={removeCalShot} />
+              </div>
+              {calShots.length > 0 && (
+                <StatsDisplay stats={calStats} biasLabel="Toe/Heel" />
+              )}
+              {calShots.length === 10 && (
+                <div className="mt-3 px-3 py-2 rounded-lg bg-violet-900/30 border border-violet-800/40 text-xs text-violet-300">
+                  ✓ 10 shots complete — review stats above, then log session.
+                </div>
+              )}
+            </div>
+
+            <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notes…" rows={2}
+              className="w-full mt-4 bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 resize-none" />
+            <button onClick={logExpress}
+              className="w-full mt-3 py-3 rounded-xl bg-sky-700 hover:bg-sky-600 text-white font-bold text-sm transition-colors">
+              Log Express Session
+            </button>
+          </Card>
+
+          {/* Express history */}
+          {exSessions.length > 0 && (
+            <Card>
+              <div className="flex items-center justify-between">
+                <SectionLabel>Express History</SectionLabel>
+                <ExportButton onClick={() => openExport(
+                  exSessions.map(s => ({
+                    date: s.date,
+                    differential_score: s.diff,
+                    differential_max: 30,
+                    variability_score: s.varScore,
+                    variability_max: 10,
+                    cal_shots: s.calShots.join("|"),
+                    cal_total: s.calStats.total,
+                    cal_avg: s.calStats.avg,
+                    cal_sd: s.calStats.sd,
+                    notes: s.notes || "",
+                  })),
+                  "Face Strike Express"
+                )} /></div>
+              <div className="space-y-3 mt-3">
+                {exSessions.slice(0, 8).map((s, i) => (
+                  <div key={i} className="py-2 border-b border-zinc-800 last:border-0">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-zinc-300 text-sm font-semibold">{s.date}</span>
+                      <div className="flex gap-3 text-xs text-zinc-400">
+                        <span>D: <span className={`font-bold ${s.diff >= 20 ? "text-emerald-400" : "text-white"}`}>{s.diff}</span>/30</span>
+                        <span>V: <span className={`font-bold ${s.varScore >= 7 ? "text-emerald-400" : "text-white"}`}>{s.varScore}</span>/10</span>
+                      </div>
+                    </div>
+                    {s.calShots.length > 0 && (
+                      <div className="flex gap-3 text-xs text-zinc-500">
+                        <span>Cal total: <span className={`font-bold ${s.calStats.total <= 5 ? "text-emerald-400" : "text-white"}`}>{s.calStats.total}</span></span>
+                        <span>Avg: <span className="font-bold text-white">{s.calStats.avg > 0 ? "+" : ""}{s.calStats.avg}</span></span>
+                        <span>SD: <span className="font-bold text-white">{s.calStats.sd}</span></span>
+                      </div>
+                    )}
+                    {s.notes && <p className="text-zinc-600 text-xs mt-0.5 italic">{s.notes}</p>}
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+        </>
+      )}
+
+      {/* ── LEVEL-BASED MODE ─────────────────────────────────────── */}
+      {mode === "level" && (
+        <>
+          <Card>
+            <SectionLabel>Current Level</SectionLabel>
+            <div className="flex items-center gap-3 mt-2">
+              <button onClick={() => setLevel(l => Math.max(1, l - 1))}
+                className="w-9 h-9 rounded-xl bg-zinc-800 text-white font-bold hover:bg-zinc-700 transition-colors flex items-center justify-center text-lg">−</button>
+              <div className="flex-1 text-center">
+                <span className="text-5xl font-black text-white tabular-nums">{level}</span>
+                <span className="text-zinc-500 text-lg">/10</span>
+              </div>
+              <button onClick={() => setLevel(l => Math.min(10, l + 1))}
+                className="w-9 h-9 rounded-xl bg-zinc-800 text-white font-bold hover:bg-zinc-700 transition-colors flex items-center justify-center text-lg">+</button>
+            </div>
+          </Card>
+
+          <div className="grid grid-cols-3 gap-2">
+            {Object.entries(colMeta).map(([key, meta]) => {
+              const [pass, total] = LEVEL_SUCCESS[level][key];
+              return (
+                <button key={key} onClick={() => setActiveColumn(key)}
+                  className={`rounded-xl p-3 text-left transition-all border ${activeColumn === key ? "bg-zinc-800 border-zinc-600" : "bg-zinc-900 border-zinc-800 opacity-60 hover:opacity-80"}`}>
+                  <Badge color={meta.color}>{meta.label}</Badge>
+                  <p className="text-zinc-400 text-xs mt-1.5">Pass: {pass}/{total}</p>
+                </button>
+              );
+            })}
+          </div>
+
+          <Card className="border-zinc-700">
+            <div className="flex items-center justify-between mb-3">
+              <Badge color={colMeta[activeColumn].color}>{colMeta[activeColumn].label}</Badge>
+              <span className="text-zinc-500 text-xs">Pass: {lvThresh[0]}/{lvThresh[1]}</span>
+            </div>
+            <p className="text-white font-semibold text-sm leading-relaxed">{levelData[activeColumn]}</p>
+            <div className="mt-3 p-2.5 rounded-lg bg-zinc-800/60 border border-zinc-700/40 text-xs text-zinc-500">
+              <span className="text-zinc-400 font-semibold">Fail threshold: </span>
+              A strike scoring ≤ −2 or ≥ +2 (outside grooved zone) counts as a fail.
+              Advance when you clear {lvThresh[0]}/{lvThresh[1]}.
+            </div>
+          </Card>
+
+          <Card>
+            <SectionLabel>Log Drill Attempt</SectionLabel>
+            <div className="mt-3">
+              <div className="flex items-center justify-between mb-1">
+                <div>
+                  <Badge color={colMeta[activeColumn].color}>{colMeta[activeColumn].label} — Lvl {level}</Badge>
+                  <p className="text-zinc-500 text-xs mt-0.5">Successful shots out of {lvThresh[1]}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <ScoreInput value={lvScores[activeColumn]} onChange={v => setLvScores(s => ({ ...s, [activeColumn]: v }))} max={lvThresh[1]} />
+                  <span className="text-zinc-600 text-xs">/{lvThresh[1]}</span>
+                </div>
+              </div>
+              <div className={`mt-3 px-3 py-2 rounded-lg text-xs font-bold text-center transition-colors ${
+                lvScores[activeColumn] >= lvThresh[0]
+                  ? "bg-emerald-900/50 border border-emerald-700/50 text-emerald-300"
+                  : lvScores[activeColumn] > 0
+                  ? "bg-rose-900/30 border border-rose-800/40 text-rose-400"
+                  : "bg-zinc-800 border border-zinc-700 text-zinc-600"
+              }`}>
+                {lvScores[activeColumn] === 0
+                  ? `Enter score — need ${lvThresh[0]} to pass`
+                  : lvScores[activeColumn] >= lvThresh[0]
+                  ? `✓ PASS — ${lvScores[activeColumn]}/${lvThresh[1]}`
+                  : `✗ ${lvThresh[0] - lvScores[activeColumn]} more needed`}
+              </div>
+            </div>
+            <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notes…" rows={2}
+              className="w-full mt-4 bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 resize-none" />
+            <button onClick={logLevel}
+              className="w-full mt-3 py-3 rounded-xl bg-violet-700 hover:bg-violet-600 text-white font-bold text-sm transition-colors">
+              Log Drill Attempt
+            </button>
+          </Card>
+
+          {lvSessions.length > 0 && (
+            <Card>
+              <div className="flex items-center justify-between">
+                <SectionLabel>Level-Based History</SectionLabel>
+                <ExportButton onClick={() => openExport(
+                  lvSessions.map(s => ({
+                    date: s.date,
+                    level: s.level,
+                    column: s.column,
+                    score: s.score,
+                    total: s.total,
+                    result: s.passed ? "PASS" : "FAIL",
+                    notes: s.notes || "",
+                  })),
+                  "Face Strike Levels"
+                )} />
+              </div>
+              <div className="space-y-2 mt-3">
+                {lvSessions.slice(0, 10).map((s, i) => (
+                  <div key={i} className="flex items-start justify-between py-2 border-b border-zinc-800 last:border-0">
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-zinc-300 text-sm font-semibold">{s.date}</span>
+                        <Badge color="sky">Lvl {s.level}</Badge>
+                        <Badge color={colMeta[s.column].color}>{colMeta[s.column].label}</Badge>
+                      </div>
+                      {s.notes && <p className="text-zinc-600 text-xs mt-0.5 italic">{s.notes}</p>}
+                    </div>
+                    <div className="text-right shrink-0 ml-2">
+                      <span className={`text-sm font-black ${s.passed ? "text-emerald-400" : "text-rose-400"}`}>{s.score}/{s.total}</span>
+                      <p className={`text-xs font-bold ${s.passed ? "text-emerald-600" : "text-rose-700"}`}>{s.passed ? "PASS" : "FAIL"}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── MODULE 2: FACE DIRECTION ──────────────────────────────────────────────────
+//
+// Direction Zone Map (7 iron, finger-width units — Week 1 data-gathering test):
+//   −4 to −1 = left of target  (negative = left bias)
+//   +1 to +4 = right of target (positive = right bias)
+//   NOTE: You NEVER enter "0" — record which finger zone the ball actually lands in.
+//         Ignore shanks and extreme mishits (those don't reflect face direction).
+//
+// Calibration scoring (10 shots):
+//   Total   = sum of ABSOLUTE values (best possible = 10, one finger each shot)
+//   Average = signed sum ÷ 10 (negative = left bias, positive = right bias)
+//   Std Dev = consistency
+//
+// Express Differential: hit 5 shots at +4, +2, −2, −4 targets (aligned square).
+//   Score = total deviation from intended target (lower = better).
+//   Repeat twice = 10 shots.
+//
+// Express Variability: pick 6-finger target. Hit 5 shots with varying face angles
+//   (very closed → slightly closed → square → slightly open → very open).
+//   Score = successful shots within target window. Repeat twice = 10 shots.
+
+const DIR_ZONES = [
+  { value: -4, label: "−4", desc: "Far Left",    colorClass: "bg-rose-900/70 border-rose-700 text-rose-300" },
+  { value: -3, label: "−3", desc: "Left",         colorClass: "bg-rose-900/50 border-rose-800 text-rose-400" },
+  { value: -2, label: "−2", desc: "Slight Left",  colorClass: "bg-amber-900/60 border-amber-700 text-amber-300" },
+  { value: -1, label: "−1", desc: "Just Left",    colorClass: "bg-amber-900/40 border-amber-800 text-amber-400" },
+  { value: 1,  label: "+1", desc: "Just Right",   colorClass: "bg-sky-900/40 border-sky-800 text-sky-400" },
+  { value: 2,  label: "+2", desc: "Slight Right", colorClass: "bg-sky-900/60 border-sky-700 text-sky-300" },
+  { value: 3,  label: "+3", desc: "Right",        colorClass: "bg-violet-900/50 border-violet-800 text-violet-400" },
+  { value: 4,  label: "+4", desc: "Far Right",    colorClass: "bg-violet-900/70 border-violet-700 text-violet-300" },
+];
+
+function FaceDirectionModule({ openExport }) {
+  const [mode, setMode] = useState("express");
+  const [activeColumn, setActiveColumn] = useState("differential");
+  const [level, setLevel] = useState(1);
+
+  // Express calibration — shot-by-shot (same 3-stat system as face strike)
+  const [calShots, setCalShots] = useState([]);
+  const [exDiff, setExDiff] = useState(0);   // total deviation score (lower=better)
+  const [exVar, setExVar] = useState(0);     // successful returns (higher=better)
+  const [exSessions, setExSessions] = useState([]);
+
+  // Level-based
+  const [lvScores, setLvScores] = useState({ differential: 0, variability: 0, calibration: 0 });
+  const [lvSessions, setLvSessions] = useState([]);
+
+  const [notes, setNotes] = useState("");
+
+  const levelData = FACE_DIRECTION_LEVELS[level - 1];
+  const calStats = calcStats(calShots);
+  const lvThresh = LEVEL_SUCCESS[level] || { differential: [7,10], variability: [7,10], calibration: [7,10] };
+  // Reuse face strike level thresholds for level-based direction — same pass structure
+  const dirLvThresh = { differential: [7,10], variability: [7,10], calibration: [7,10],
+    ...( level >= 8 && { differential: [6, level===8?8:9], variability: [6,9] }) };
+  const activeDirThresh = dirLvThresh[activeColumn] || [7,10];
+
+  const colMeta = {
+    differential: { label: "Differential", color: "amber",   desc: "Intentional face-angle offset" },
+    variability:  { label: "Variability",  color: "emerald", desc: "Return from open/closed setup" },
+    calibration:  { label: "Calibration",  color: "rose",    desc: "Week 1 direction baseline test" },
+  };
+
+  function addCalShot(val) {
+    if (calShots.length < 10) setCalShots(s => [...s, val]);
+  }
+  function removeCalShot(idx) {
+    setCalShots(s => s.filter((_, i) => i !== idx));
+  }
+
+  function logExpress() {
+    setExSessions(prev => [{
+      date: today(),
+      diff: exDiff, varScore: exVar,
+      calShots: [...calShots], calStats: { ...calStats },
+      notes,
+    }, ...prev]);
+    setExDiff(0); setExVar(0); setCalShots([]); setNotes("");
+  }
+
+  function logLevel() {
+    const passed = lvScores[activeColumn] >= activeDirThresh[0];
+    setLvSessions(prev => [{
+      date: today(), level, column: activeColumn,
+      score: lvScores[activeColumn], total: activeDirThresh[1],
+      threshold: activeDirThresh[0], passed, notes,
+    }, ...prev]);
+    setLvScores(s => ({ ...s, [activeColumn]: 0 }));
+    setNotes("");
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-black text-white tracking-tight">Face Direction</h2>
+          <p className="text-zinc-500 text-sm mt-0.5">Clubface aim · 7 iron · finger widths</p>
+        </div>
+        <Badge color="amber">−left · +right · no 0</Badge>
+      </div>
+
+      {/* Direction zone reference */}
+      <Card className="border-zinc-700/60">
+        <SectionLabel>Direction Zone Map</SectionLabel>
+        <div className="grid grid-cols-8 gap-1 mt-2">
+          {DIR_ZONES.map(z => (
+            <div key={z.value} className={`rounded-lg border py-2 text-center text-xs font-black ${z.colorClass}`}>
+              {z.label}
+            </div>
+          ))}
+        </div>
+        <div className="flex justify-between text-xs text-zinc-600 mt-1.5 px-1">
+          <span>← Left of target</span>
+          <span className="text-zinc-500 italic">No "0" — always record actual zone</span>
+          <span>Right of target →</span>
+        </div>
+        <p className="text-zinc-600 text-xs mt-2">Ignore shanks / extreme mishits — those don't reflect face direction.</p>
+      </Card>
+
+      {/* Mode toggle */}
+      <div className="grid grid-cols-2 gap-2 bg-zinc-900 p-1 rounded-xl border border-zinc-800">
+        <button onClick={() => setMode("express")}
+          className={`py-2.5 rounded-lg text-sm font-bold transition-all ${mode === "express" ? "bg-zinc-700 text-white" : "text-zinc-500 hover:text-zinc-300"}`}>
+          ⚡ Express
+        </button>
+        <button onClick={() => setMode("level")}
+          className={`py-2.5 rounded-lg text-sm font-bold transition-all ${mode === "level" ? "bg-zinc-700 text-white" : "text-zinc-500 hover:text-zinc-300"}`}>
+          🏆 Level-Based
+        </button>
+      </div>
+
+      {/* ── EXPRESS MODE ─────────────────────────────────────────── */}
+      {mode === "express" && (
+        <>
+          {/* Column tabs */}
+          <div className="grid grid-cols-3 gap-2">
+            {Object.entries(colMeta).map(([key, meta]) => (
+              <button key={key} onClick={() => setActiveColumn(key)}
+                className={`rounded-xl p-3 text-left transition-all border ${activeColumn === key ? "bg-zinc-800 border-zinc-600" : "bg-zinc-900 border-zinc-800 opacity-60 hover:opacity-80"}`}>
+                <Badge color={meta.color}>{meta.label}</Badge>
+                <p className="text-zinc-400 text-xs mt-1.5 leading-snug">{meta.desc}</p>
+              </button>
+            ))}
+          </div>
+
+          {/* Drill instructions */}
+          <Card className="border-zinc-700">
+            <Badge color={colMeta[activeColumn].color}>{colMeta[activeColumn].label}</Badge>
+            <div className="mt-3 space-y-1.5">
+              {activeColumn === "differential" && (
+                <>
+                  <p className="text-xs text-zinc-400 leading-relaxed"><span className="text-zinc-200 font-semibold">Protocol: </span>Align square to target (0). Hit 5 shots attempting +4, +2, −2, −4 finger targets in sequence. Repeat twice = 10 shots total.</p>
+                  <p className="text-xs text-zinc-400 leading-relaxed"><span className="text-zinc-200 font-semibold">Scoring: </span>For each shot, record the absolute difference between intended and actual zone (e.g. aimed +4, landed +2 = 2 pts). Total all 10. Lower = better.</p>
+                  <div className="mt-2 px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-xs text-zinc-500">Enter your total deviation score below.</div>
+                </>
+              )}
+              {activeColumn === "variability" && (
+                <>
+                  <p className="text-xs text-zinc-400 leading-relaxed"><span className="text-zinc-200 font-semibold">Protocol: </span>Pick a 6-finger target window. Hit 5 shots varying face angle at address: very closed → slightly closed → square → slightly open → very open. Repeat twice = 10 shots.</p>
+                  <p className="text-xs text-zinc-400 leading-relaxed"><span className="text-zinc-200 font-semibold">Goal: </span>Return the clubface to land within the 6-finger window despite varied start positions. Higher score = better.</p>
+                  <div className="mt-2 px-3 py-2 rounded-lg bg-zinc-800 border border-zinc-700 text-xs text-zinc-500">Enter successful returns out of 10 below.</div>
+                </>
+              )}
+              {activeColumn === "calibration" && (
+                <>
+                  <p className="text-xs text-zinc-400 leading-relaxed"><span className="text-zinc-200 font-semibold">Protocol: </span>Hit 10 normal shots with a 7 iron. Record each shot's direction zone (−4 to +4, no 0). Ignore shanks.</p>
+                  <p className="text-xs text-zinc-400 leading-relaxed"><span className="text-zinc-200 font-semibold">Scoring: </span>Total = sum of absolute values (best = 10). Average = signed sum ÷ 10 (negative = left bias, positive = right). Std Dev = consistency.</p>
+                </>
+              )}
+            </div>
+          </Card>
+
+          {/* Score entry */}
+          <Card>
+            <SectionLabel>Log Express Session</SectionLabel>
+
+            {/* Differential */}
+            <div className="flex items-center justify-between mt-3 pb-4 border-b border-zinc-800">
+              <div>
+                <Badge color="amber">Differential</Badge>
+                <p className="text-zinc-500 text-xs mt-0.5">Total deviation score (lower=better)</p>
+              </div>
+              <ScoreInput value={exDiff} onChange={setExDiff} max={40} />
+            </div>
+
+            {/* Variability */}
+            <div className="flex items-center justify-between py-4 border-b border-zinc-800">
+              <div>
+                <Badge color="emerald">Variability</Badge>
+                <p className="text-zinc-500 text-xs mt-0.5">Returns within 6-finger target / 10</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <ScoreInput value={exVar} onChange={setExVar} max={10} />
+                <span className="text-zinc-600 text-xs">/10</span>
+              </div>
+            </div>
+
+            {/* Calibration — shot by shot */}
+            <div className="pt-4">
+              <div className="flex items-center justify-between mb-3">
+                <Badge color="rose">Calibration — Week 1 Test</Badge>
+                <span className="text-zinc-500 text-xs">{calShots.length}/10 shots</span>
+              </div>
+              <p className="text-zinc-500 text-xs mb-3">Tap a zone after each shot. No "0" — record actual landing zone. Tap a logged shot to remove it.</p>
+              <div className="grid grid-cols-8 gap-1">
+                {DIR_ZONES.map(z => (
+                  <button key={z.value} onClick={() => addCalShot(z.value)}
+                    className={`rounded-lg border text-xs font-bold py-2.5 transition-all ${z.colorClass} opacity-80 hover:opacity-100 active:scale-95`}>
+                    {z.label}
+                  </button>
+                ))}
+              </div>
+              <div className="mt-3">
+                <ShotLog
+                  shots={calShots}
+                  onRemove={removeCalShot}
+                />
+              </div>
+              {calShots.length > 0 && (
+                <StatsDisplay stats={calStats} biasLabel="Left/Right" />
+              )}
+              {calShots.length === 10 && (
+                <div className="mt-3 px-3 py-2 rounded-lg bg-rose-900/30 border border-rose-800/40 text-xs text-rose-300">
+                  ✓ 10 shots complete — review stats above, then log session.
+                </div>
+              )}
+            </div>
+
+            <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notes…" rows={2}
+              className="w-full mt-4 bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 resize-none" />
+            <button onClick={logExpress}
+              className="w-full mt-3 py-3 rounded-xl bg-amber-700 hover:bg-amber-600 text-white font-bold text-sm transition-colors">
+              Log Express Session
+            </button>
+          </Card>
+
+          {exSessions.length > 0 && (
+            <Card>
+              <div className="flex items-center justify-between">
+                <SectionLabel>Express History</SectionLabel>
+                <ExportButton onClick={() => openExport(
+                  exSessions.map(s => ({
+                    date: s.date,
+                    differential_score: s.diff,
+                    variability_score: s.varScore,
+                    variability_max: 10,
+                    cal_shots: s.calShots.join("|"),
+                    cal_total: s.calStats.total,
+                    cal_avg: s.calStats.avg,
+                    cal_sd: s.calStats.sd,
+                    notes: s.notes || "",
+                  })),
+                  "Face Direction Express"
+                )} />
+              </div>
+              <div className="space-y-3 mt-3">
+                {exSessions.slice(0, 8).map((s, i) => (
+                  <div key={i} className="py-2 border-b border-zinc-800 last:border-0">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-zinc-300 text-sm font-semibold">{s.date}</span>
+                      <div className="flex gap-3 text-xs text-zinc-400">
+                        <span>D: <span className={`font-bold ${s.diff <= 10 ? "text-emerald-400" : "text-white"}`}>{s.diff}</span></span>
+                        <span>V: <span className={`font-bold ${s.varScore >= 7 ? "text-emerald-400" : "text-white"}`}>{s.varScore}</span>/10</span>
+                      </div>
+                    </div>
+                    {s.calShots.length > 0 && (
+                      <div className="flex gap-3 text-xs text-zinc-500">
+                        <span>Cal total: <span className={`font-bold ${s.calStats.total <= 15 ? "text-emerald-400" : "text-white"}`}>{s.calStats.total}</span></span>
+                        <span>Avg: <span className="font-bold text-white">{s.calStats.avg > 0 ? "+" : ""}{s.calStats.avg}</span></span>
+                        <span>SD: <span className="font-bold text-white">{s.calStats.sd}</span></span>
+                      </div>
+                    )}
+                    {s.notes && <p className="text-zinc-600 text-xs mt-0.5 italic">{s.notes}</p>}
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+        </>
+      )}
+
+      {/* ── LEVEL-BASED MODE ─────────────────────────────────────── */}
+      {mode === "level" && (
+        <>
+          <Card>
+            <SectionLabel>Current Level</SectionLabel>
+            <div className="flex items-center gap-3 mt-2">
+              <button onClick={() => setLevel(l => Math.max(1, l - 1))}
+                className="w-9 h-9 rounded-xl bg-zinc-800 text-white font-bold hover:bg-zinc-700 transition-colors flex items-center justify-center text-lg">−</button>
+              <div className="flex-1 text-center">
+                <span className="text-5xl font-black text-white tabular-nums">{level}</span>
+                <span className="text-zinc-500 text-lg">/10</span>
+              </div>
+              <button onClick={() => setLevel(l => Math.min(10, l + 1))}
+                className="w-9 h-9 rounded-xl bg-zinc-800 text-white font-bold hover:bg-zinc-700 transition-colors flex items-center justify-center text-lg">+</button>
+            </div>
+          </Card>
+
+          <div className="grid grid-cols-3 gap-2">
+            {Object.entries(colMeta).map(([key, meta]) => (
+              <button key={key} onClick={() => setActiveColumn(key)}
+                className={`rounded-xl p-3 text-left transition-all border ${activeColumn === key ? "bg-zinc-800 border-zinc-600" : "bg-zinc-900 border-zinc-800 opacity-60 hover:opacity-80"}`}>
+                <Badge color={meta.color}>{meta.label}</Badge>
+                <p className="text-zinc-400 text-xs mt-1.5">{meta.desc}</p>
+              </button>
+            ))}
+          </div>
+
+          <Card className="border-zinc-700">
+            <div className="flex items-center justify-between mb-3">
+              <Badge color={colMeta[activeColumn].color}>{colMeta[activeColumn].label}</Badge>
+              <span className="text-zinc-500 text-xs">Pass: {activeDirThresh[0]}/{activeDirThresh[1]}</span>
+            </div>
+            <p className="text-white font-semibold text-sm leading-relaxed">{levelData[activeColumn]}</p>
+            <div className="mt-3 p-2.5 rounded-lg bg-zinc-800/60 border border-zinc-700/40 text-xs text-zinc-500">
+              <span className="text-zinc-400 font-semibold">Scoring reminder: </span>
+              Direction measured in finger widths from target. Record actual zone (no 0). 
+              Ignore shanks — those reflect strike, not direction.
+            </div>
+          </Card>
+
+          <Card>
+            <SectionLabel>Log Drill Attempt</SectionLabel>
+            <div className="mt-3">
+              <div className="flex items-center justify-between mb-1">
+                <div>
+                  <Badge color={colMeta[activeColumn].color}>{colMeta[activeColumn].label} — Lvl {level}</Badge>
+                  <p className="text-zinc-500 text-xs mt-0.5">Successful shots / {activeDirThresh[1]}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <ScoreInput value={lvScores[activeColumn]} onChange={v => setLvScores(s => ({ ...s, [activeColumn]: v }))} max={activeDirThresh[1]} />
+                  <span className="text-zinc-600 text-xs">/{activeDirThresh[1]}</span>
+                </div>
+              </div>
+              <div className={`mt-3 px-3 py-2 rounded-lg text-xs font-bold text-center transition-colors ${
+                lvScores[activeColumn] >= activeDirThresh[0]
+                  ? "bg-emerald-900/50 border border-emerald-700/50 text-emerald-300"
+                  : lvScores[activeColumn] > 0
+                  ? "bg-rose-900/30 border border-rose-800/40 text-rose-400"
+                  : "bg-zinc-800 border border-zinc-700 text-zinc-600"
+              }`}>
+                {lvScores[activeColumn] === 0
+                  ? `Enter score — need ${activeDirThresh[0]} to pass`
+                  : lvScores[activeColumn] >= activeDirThresh[0]
+                  ? `✓ PASS — ${lvScores[activeColumn]}/${activeDirThresh[1]}`
+                  : `✗ ${activeDirThresh[0] - lvScores[activeColumn]} more needed`}
+              </div>
+            </div>
+            <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Notes…" rows={2}
+              className="w-full mt-4 bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500 resize-none" />
+            <button onClick={logLevel}
+              className="w-full mt-3 py-3 rounded-xl bg-amber-700 hover:bg-amber-600 text-white font-bold text-sm transition-colors">
+              Log Drill Attempt
+            </button>
+          </Card>
+
+          {lvSessions.length > 0 && (
+            <Card>
+              <div className="flex items-center justify-between">
+                <SectionLabel>Level-Based History</SectionLabel>
+                <ExportButton onClick={() => openExport(
+                  lvSessions.map(s => ({
+                    date: s.date,
+                    level: s.level,
+                    column: s.column,
+                    score: s.score,
+                    total: s.total,
+                    result: s.passed ? "PASS" : "FAIL",
+                    notes: s.notes || "",
+                  })),
+                  "Face Direction Levels"
+                )} />
+              </div>
+              <div className="space-y-2 mt-3">
+                {lvSessions.slice(0, 10).map((s, i) => (
+                  <div key={i} className="flex items-start justify-between py-2 border-b border-zinc-800 last:border-0">
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-zinc-300 text-sm font-semibold">{s.date}</span>
+                        <Badge color="amber">Lvl {s.level}</Badge>
+                        <Badge color={colMeta[s.column].color}>{colMeta[s.column].label}</Badge>
+                      </div>
+                      {s.notes && <p className="text-zinc-600 text-xs mt-0.5 italic">{s.notes}</p>}
+                    </div>
+                    <div className="text-right shrink-0 ml-2">
+                      <span className={`text-sm font-black ${s.passed ? "text-emerald-400" : "text-rose-400"}`}>{s.score}/{s.total}</span>
+                      <p className={`text-xs font-bold ${s.passed ? "text-emerald-600" : "text-rose-700"}`}>{s.passed ? "PASS" : "FAIL"}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── MODULE 3: SHOT RANDOMIZER ─────────────────────────────────────────────────
+//
+// Strokes Gained dispersion standards (lateral SD & depth SD in yards)
+// Sourced from Shot Scope / Arccos aggregate data by distance band.
+// "Hit" = result within ±1 SD both laterally and in depth.
+//
+//  Distance  Lateral SD   Depth SD
+//  < 50y        5y          5y
+//  50–99y       9y          8y
+//  100–124y    14y         11y
+//  125–149y    18y         14y
+//  150–174y    22y         17y
+//  175–199y    26y         20y
+//  200–224y    30y         24y
+//  225–249y    34y         27y
+//  250+y        38y         30y
+
+const SG_DISPERSIONS = [
+  { maxDist: 49,  lat: 5,  dep: 5  },
+  { maxDist: 99,  lat: 9,  dep: 8  },
+  { maxDist: 124, lat: 14, dep: 11 },
+  { maxDist: 149, lat: 18, dep: 14 },
+  { maxDist: 174, lat: 22, dep: 17 },
+  { maxDist: 199, lat: 26, dep: 20 },
+  { maxDist: 224, lat: 30, dep: 24 },
+  { maxDist: 249, lat: 34, dep: 27 },
+  { maxDist: Infinity, lat: 38, dep: 30 },
+];
+
+function getDispersion(dist) {
+  return SG_DISPERSIONS.find(d => dist <= d.maxDist) || SG_DISPERSIONS[SG_DISPERSIONS.length - 1];
+}
+
+// Shape outcomes — intended vs actual
+const SHAPE_RESULTS = ["Draw", "Fade", "Straight", "Pull", "Slice", "Mishit"];
+const SHAPE_RESULT_META = {
+  Draw:    { color: "emerald", isGood: (intended) => intended === "Draw" || intended === "High Draw" || intended === "Low Draw" },
+  Fade:    { color: "sky",     isGood: (intended) => intended === "Fade" || intended === "High Fade" || intended === "Low Fade" },
+  Straight:{ color: "violet",  isGood: (intended) => intended === "Straight" || intended === "Punch" },
+  Pull:    { color: "amber",   isGood: () => false },
+  Slice:   { color: "rose",    isGood: () => false },
+  Mishit:  { color: "rose",    isGood: () => false },
+};
+
+// Proximity — lateral and depth are independent axes, multi-select allowed.
+// "hit" is exclusive (clears all misses). Any miss clears "hit".
+// A shot can be e.g. ["left","short"] = outside window in both dimensions.
+const PROX_LATERAL = [
+  { value: "left",  label: "Left",  color: "amber"  },
+  { value: "right", label: "Right", color: "sky"    },
+];
+const PROX_DEPTH = [
+  { value: "short", label: "Short", color: "rose"   },
+  { value: "long",  label: "Long",  color: "violet" },
+];
+const ALL_MISS_VALUES = ["left", "right", "short", "long"];
+
+// Format a prox set for display in history / confirmation
+function formatProx(proxSet) {
+  if (!proxSet || proxSet.length === 0) return "—";
+  if (proxSet.includes("hit")) return "Hit ✓";
+  return proxSet.map(v => v.charAt(0).toUpperCase() + v.slice(1)).join(" + ");
+}
+
+function ShotRandomizerModule({ openExport }) {
+  const [view, setView] = useState("randomize");
+  const [shot, setShot] = useState(null);
+  const [isSpinning, setIsSpinning] = useState(false);
+  const [locked, setLocked] = useState({ shape: false, distance: false, target: false, trouble: false });
+  const [pinned, setPinned] = useState({ shape: SHOT_SHAPES[0], distance: DISTANCES[5], target: TARGETS[2], trouble: TROUBLE[0] });
+
+  const [resultShape, setResultShape] = useState(null);
+  const [proxSet, setProxSet] = useState([]); // array: ["hit"] | subset of ["left","right","short","long"]
+  const [actualDist, setActualDist] = useState("");
+  const [resultLogged, setResultLogged] = useState(false);
+
+  const [history, setHistory] = useState([]);
+
+  function generateShot() {
+    setIsSpinning(true);
+    setResultShape(null);
+    setProxSet([]);
+    setActualDist("");
+    setResultLogged(false);
+    setTimeout(() => {
+      const next = {
+        shape: locked.shape ? pinned.shape : rand(SHOT_SHAPES),
+        distance: locked.distance ? pinned.distance : rand(DISTANCES),
+        target: locked.target ? pinned.target : rand(TARGETS),
+        trouble: locked.trouble ? pinned.trouble : rand(TROUBLE),
+        time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      };
+      setShot(next);
+      setPinned(p => ({ ...p, ...next }));
+      setIsSpinning(false);
+    }, 400);
+  }
+
+  // Toggle proximity selection with mutual exclusion logic
+  function toggleProx(value) {
+    if (value === "hit") {
+      // Hit clears all misses and is exclusive
+      setProxSet(prev => prev.includes("hit") ? [] : ["hit"]);
+    } else {
+      // Miss clears "hit", toggles this value
+      setProxSet(prev => {
+        const withoutHit = prev.filter(v => v !== "hit");
+        return withoutHit.includes(value)
+          ? withoutHit.filter(v => v !== value)
+          : [...withoutHit, value];
+      });
+    }
+  }
+
+  function logResult() {
+    if (!shot || !resultShape || proxSet.length === 0) return;
+    setHistory(h => [{
+      shot: { ...shot },
+      resultShape,
+      proxSet: [...proxSet],
+      actualDist: actualDist !== "" ? Number(actualDist) : null,
+    }, ...h].slice(0, 50));
+    setResultLogged(true);
+  }
+
+  // Stats
+  const stats = (() => {
+    if (!history.length) return null;
+    const total = history.length;
+    const shapeHits = history.filter(h => SHAPE_RESULT_META[h.resultShape]?.isGood(h.shot.shape)).length;
+    const proxHits  = history.filter(h => h.proxSet.includes("hit")).length;
+    const shapeCounts = Object.fromEntries(SHAPE_RESULTS.map(s => [s, history.filter(h => h.resultShape === s).length]));
+    // Count each miss dimension independently (a shot can hit multiple)
+    const missCounts = Object.fromEntries(
+      [...ALL_MISS_VALUES].map(v => [v, history.filter(h => h.proxSet.includes(v)).length])
+    );
+    const actualDists = history.filter(h => h.actualDist !== null).map(h => h.actualDist);
+    const avgActual = actualDists.length ? Math.round(actualDists.reduce((a,b) => a+b,0) / actualDists.length) : null;
+    return { total, shapeHits, proxHits, shapeCounts, missCounts, avgActual };
+  })();
+
+  const disp = shot ? getDispersion(shot.distance) : null;
+  const proxReady = proxSet.length > 0;
+  const canLog = resultShape && proxReady;
+
+  // Color maps
+  const proxColorActive = { hit: "bg-emerald-800/80 border-emerald-500 text-emerald-200", left: "bg-amber-800/80 border-amber-500 text-amber-200", right: "bg-sky-800/80 border-sky-500 text-sky-200", short: "bg-rose-800/80 border-rose-500 text-rose-200", long: "bg-violet-800/80 border-violet-500 text-violet-200" };
+  const proxColorBar   = { left: "bg-amber-700", right: "bg-sky-700", short: "bg-rose-700", long: "bg-violet-700" };
+  const shapeBarColors = { emerald: "bg-emerald-700", sky: "bg-sky-700", violet: "bg-violet-700", amber: "bg-amber-700", rose: "bg-rose-700" };
+
+  return (
+    <div className="space-y-5">
+
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-black text-white tracking-tight">Shot Randomizer</h2>
+          <p className="text-zinc-500 text-sm mt-0.5">On-course simulation · result tracking</p>
+        </div>
+        <Badge color="emerald">SG Dispersions</Badge>
+      </div>
+
+      {/* View toggle */}
+      <div className="grid grid-cols-2 gap-2 bg-zinc-900 p-1 rounded-xl border border-zinc-800">
+        <button onClick={() => setView("randomize")}
+          className={`py-2.5 rounded-lg text-sm font-bold transition-all ${view === "randomize" ? "bg-zinc-700 text-white" : "text-zinc-500 hover:text-zinc-300"}`}>
+          🎲 Randomize
+        </button>
+        <button onClick={() => setView("stats")}
+          className={`py-2.5 rounded-lg text-sm font-bold transition-all ${view === "stats" ? "bg-zinc-700 text-white" : "text-zinc-500 hover:text-zinc-300"}`}>
+          📊 Stats {history.length > 0 && <span className="ml-1 text-zinc-500">({history.length})</span>}
+        </button>
+      </div>
+
+      {view === "randomize" && (
+        <>
+          {/* Lock controls */}
+          <Card>
+            <SectionLabel>Lock Parameters</SectionLabel>
+            <p className="text-zinc-500 text-xs mb-3">Lock any variable to hold it constant across shots</p>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { key: "shape",    label: "Shot Shape",     options: SHOT_SHAPES },
+                { key: "distance", label: "Distance (yds)", options: DISTANCES.map(String) },
+                { key: "target",   label: "Target Side",    options: TARGETS },
+                { key: "trouble",  label: "Trouble Side",   options: TROUBLE },
+              ].map(({ key, label, options }) => (
+                <div key={key} className={`rounded-xl p-3 border transition-all ${locked[key] ? "bg-zinc-800 border-zinc-600" : "bg-zinc-900 border-zinc-800"}`}>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-zinc-300 text-xs font-semibold">{label}</span>
+                    <button onClick={() => setLocked(l => ({ ...l, [key]: !l[key] }))}
+                      className={`text-xs px-2 py-0.5 rounded-full font-bold transition-colors ${locked[key] ? "bg-emerald-800 text-emerald-300" : "bg-zinc-700 text-zinc-400"}`}>
+                      {locked[key] ? "🔒" : "🔓"}
+                    </button>
+                  </div>
+                  {locked[key] && (
+                    <select value={pinned[key]}
+                      onChange={e => setPinned(p => ({ ...p, [key]: key === "distance" ? Number(e.target.value) : e.target.value }))}
+                      className="w-full bg-zinc-700 border border-zinc-600 rounded-lg px-2 py-1 text-white text-xs focus:outline-none">
+                      {options.map(o => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                  )}
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          {/* Generate button */}
+          <button onClick={generateShot} disabled={isSpinning}
+            className={`w-full py-5 rounded-2xl font-black text-lg tracking-wide transition-all ${
+              isSpinning
+                ? "bg-zinc-700 text-zinc-500 cursor-not-allowed"
+                : "bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white shadow-lg shadow-emerald-900/40"
+            }`}>
+            {isSpinning ? "Generating…" : "🎲 Randomize Shot"}
+          </button>
+
+          {/* Shot assignment */}
+          {shot && !isSpinning && (
+            <Card className="border-emerald-900/40">
+              <SectionLabel>Your Assignment</SectionLabel>
+              <div className="grid grid-cols-2 gap-3 mt-3">
+                <div className="rounded-xl bg-zinc-800 p-4 text-center">
+                  <p className="text-zinc-500 text-xs mb-1">Shape</p>
+                  <p className="font-black text-xl text-white">{shot.shape}</p>
+                </div>
+                <div className="rounded-xl bg-zinc-800 p-4 text-center">
+                  <p className="text-zinc-500 text-xs mb-1">Carry Target</p>
+                  <p className="text-white font-black text-xl">{shot.distance}<span className="text-zinc-400 text-sm font-normal"> yds</span></p>
+                </div>
+                <div className="rounded-xl bg-zinc-800 p-4 text-center">
+                  <p className="text-zinc-500 text-xs mb-1">Target Side</p>
+                  <p className="text-white font-black text-xl">{shot.target}</p>
+                </div>
+                <div className="rounded-xl bg-rose-950/40 border border-rose-900/40 p-4 text-center">
+                  <p className="text-rose-400 text-xs mb-1">⚠ Trouble</p>
+                  <p className="text-white font-black text-xl">{shot.trouble}</p>
+                </div>
+              </div>
+              {disp && (
+                <div className="mt-3 p-3 rounded-xl bg-zinc-800/60 border border-zinc-700/40">
+                  <p className="text-zinc-400 text-xs font-semibold mb-2">SG Dispersion Window — {shot.distance}y</p>
+                  <div className="grid grid-cols-2 gap-2 text-xs text-center">
+                    <div>
+                      <p className="text-zinc-500">Lateral (L / R)</p>
+                      <p className="text-white font-bold">±{disp.lat} yds</p>
+                    </div>
+                    <div>
+                      <p className="text-zinc-500">Depth (Short / Long)</p>
+                      <p className="text-white font-bold">±{disp.dep} yds</p>
+                    </div>
+                  </div>
+                  <p className="text-zinc-600 text-xs mt-2 text-center">"Hit" = within both windows · misses can combine (e.g. Short + Left)</p>
+                </div>
+              )}
+            </Card>
+          )}
+
+          {/* Result entry */}
+          {shot && !isSpinning && !resultLogged && (
+            <Card className="border-zinc-700">
+              <SectionLabel>Record Result</SectionLabel>
+
+              {/* Shape result */}
+              <div className="mt-3">
+                <p className="text-zinc-400 text-xs font-semibold mb-2">Shot Shape <span className="text-zinc-600 font-normal">(what did it actually do?)</span></p>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {SHAPE_RESULTS.map(s => {
+                    const meta = SHAPE_RESULT_META[s];
+                    const isSelected = resultShape === s;
+                    const isGood = meta.isGood(shot.shape);
+                    return (
+                      <button key={s} onClick={() => setResultShape(s)}
+                        className={`rounded-lg py-2.5 text-xs font-bold border transition-all ${
+                          isSelected
+                            ? isGood ? "bg-emerald-800/80 border-emerald-600 text-emerald-200" : "bg-rose-800/80 border-rose-600 text-rose-200"
+                            : "bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-500"
+                        }`}>
+                        {s}{isGood && <span className="ml-1 text-emerald-600 text-xs">✓</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+                {resultShape && (
+                  <p className="text-xs mt-1.5 text-center">
+                    {SHAPE_RESULT_META[resultShape].isGood(shot.shape)
+                      ? <span className="text-emerald-400">✓ Matched — intended {shot.shape}</span>
+                      : <span className="text-rose-400">✗ Unintended — called {shot.shape}, got {resultShape}</span>}
+                  </p>
+                )}
+              </div>
+
+              {/* Proximity — Hit button + 2×2 miss grid */}
+              <div className="mt-4">
+                <p className="text-zinc-400 text-xs font-semibold mb-2">
+                  Proximity <span className="text-zinc-600 font-normal">— select all that apply</span>
+                </p>
+
+                {/* Hit — full-width exclusive button */}
+                <button
+                  onClick={() => toggleProx("hit")}
+                  className={`w-full py-2.5 rounded-lg text-sm font-bold border transition-all mb-2 ${
+                    proxSet.includes("hit") ? proxColorActive.hit : "bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-500"
+                  }`}>
+                  ✓ Hit — within ±{disp?.lat}y lateral & ±{disp?.dep}y depth
+                </button>
+
+                {/* Miss axes — 2×2 layout */}
+                <p className="text-zinc-600 text-xs mb-1.5 text-center">— or select one or more misses —</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {/* Lateral row */}
+                  <div className="space-y-1.5">
+                    <p className="text-zinc-600 text-xs text-center">Lateral (outside ±{disp?.lat}y)</p>
+                    {PROX_LATERAL.map(p => (
+                      <button key={p.value} onClick={() => toggleProx(p.value)}
+                        className={`w-full py-2.5 rounded-lg text-sm font-bold border transition-all ${
+                          proxSet.includes(p.value) ? proxColorActive[p.value] : "bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-500"
+                        }`}>
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                  {/* Depth row */}
+                  <div className="space-y-1.5">
+                    <p className="text-zinc-600 text-xs text-center">Depth (outside ±{disp?.dep}y)</p>
+                    {PROX_DEPTH.map(p => (
+                      <button key={p.value} onClick={() => toggleProx(p.value)}
+                        className={`w-full py-2.5 rounded-lg text-sm font-bold border transition-all ${
+                          proxSet.includes(p.value) ? proxColorActive[p.value] : "bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-500"
+                        }`}>
+                        {p.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Live summary of selection */}
+                {proxSet.length > 0 && (
+                  <div className={`mt-2 px-3 py-2 rounded-lg text-xs font-bold text-center ${
+                    proxSet.includes("hit")
+                      ? "bg-emerald-900/40 border border-emerald-800/50 text-emerald-300"
+                      : "bg-zinc-800 border border-zinc-700 text-zinc-300"
+                  }`}>
+                    {proxSet.includes("hit")
+                      ? "✓ Hit — within SG dispersion window"
+                      : `Miss: ${formatProx(proxSet)}`}
+                  </div>
+                )}
+              </div>
+
+              {/* Actual distance */}
+              <div className="mt-4">
+                <p className="text-zinc-400 text-xs font-semibold mb-1.5">Actual Carry Distance <span className="text-zinc-600 font-normal">(optional)</span></p>
+                <div className="flex items-center gap-2">
+                  <input type="number" value={actualDist} onChange={e => setActualDist(e.target.value)}
+                    placeholder={`Target: ${shot.distance} yds`}
+                    className="flex-1 bg-zinc-800 border border-zinc-700 rounded-xl px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-zinc-500" />
+                  <span className="text-zinc-500 text-sm">yds</span>
+                  {actualDist !== "" && (
+                    <span className={`text-xs font-bold tabular-nums ${Math.abs(Number(actualDist) - shot.distance) <= (disp?.dep || 15) ? "text-emerald-400" : "text-rose-400"}`}>
+                      {Number(actualDist) >= shot.distance ? "+" : ""}{Number(actualDist) - shot.distance}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <button onClick={logResult} disabled={!canLog}
+                className={`w-full mt-4 py-3 rounded-xl font-bold text-sm transition-all ${
+                  canLog ? "bg-emerald-700 hover:bg-emerald-600 text-white" : "bg-zinc-800 text-zinc-600 cursor-not-allowed"
+                }`}>
+                {canLog ? "Log Result" : "Select shape + proximity to log"}
+              </button>
+            </Card>
+          )}
+
+          {/* Post-log confirmation */}
+          {resultLogged && shot && (
+            <Card className="border-emerald-900/40">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-emerald-400 font-bold text-sm">✓ Result logged</p>
+                  <p className="text-zinc-500 text-xs mt-0.5">
+                    Shape: <span className="text-white">{resultShape}</span>
+                    {" · "}Proximity: <span className={proxSet.includes("hit") ? "text-emerald-400" : "text-amber-400"}>{formatProx(proxSet)}</span>
+                    {actualDist !== "" && <> · <span className="text-white">{actualDist}y</span></>}
+                  </p>
+                </div>
+                <button onClick={generateShot}
+                  className="px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-600 text-white text-xs font-bold transition-colors">
+                  Next →
+                </button>
+              </div>
+            </Card>
+          )}
+
+          {/* Shot history */}
+          {history.length > 0 && (
+            <Card>
+              <div className="flex items-center justify-between mb-3">
+                <SectionLabel>Shot Log</SectionLabel>
+                <div className="flex items-center gap-2">
+                  <ExportButton onClick={() => openExport(
+                    history.map(h => ({
+                      time: h.shot.time,
+                      assigned_shape: h.shot.shape,
+                      target_distance_yds: h.shot.distance,
+                      target_side: h.shot.target,
+                      trouble_side: h.shot.trouble,
+                      result_shape: h.resultShape,
+                      shape_matched: SHAPE_RESULT_META[h.resultShape]?.isGood(h.shot.shape) ? "YES" : "NO",
+                      proximity: formatProx(h.proxSet),
+                      proximity_hit: h.proxSet.includes("hit") ? "YES" : "NO",
+                      miss_left: h.proxSet.includes("left") ? "YES" : "NO",
+                      miss_right: h.proxSet.includes("right") ? "YES" : "NO",
+                      miss_short: h.proxSet.includes("short") ? "YES" : "NO",
+                      miss_long: h.proxSet.includes("long") ? "YES" : "NO",
+                      actual_carry_yds: h.actualDist !== null ? h.actualDist : "",
+                    })),
+                    "Shot Randomizer"
+                  )} />
+                  <button onClick={() => setHistory([])} className="text-xs text-zinc-600 hover:text-zinc-400 transition-colors">Clear</button>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                {history.slice(0, 12).map((h, i) => {
+                  const shapeGood = SHAPE_RESULT_META[h.resultShape]?.isGood(h.shot.shape);
+                  const proxGood  = h.proxSet.includes("hit");
+                  return (
+                    <div key={i} className={`flex items-center justify-between py-1.5 border-b border-zinc-800/60 last:border-0 text-xs ${i === 0 ? "" : "opacity-70"}`}>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-zinc-600">{h.shot.time}</span>
+                        <span className="text-zinc-300 font-semibold">{h.shot.shape}</span>
+                        <span className="text-zinc-600">@{h.shot.distance}y</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                        <span className={`px-1.5 py-0.5 rounded font-bold ${shapeGood ? "bg-emerald-900/60 text-emerald-400" : "bg-rose-900/40 text-rose-400"}`}>{h.resultShape}</span>
+                        <span className={`px-1.5 py-0.5 rounded font-bold ${proxGood ? "bg-emerald-900/60 text-emerald-400" : "bg-amber-900/40 text-amber-400"}`}>{formatProx(h.proxSet)}</span>
+                        {h.actualDist !== null && <span className="text-zinc-500">{h.actualDist}y</span>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+          )}
+        </>
+      )}
+
+      {/* ── STATS VIEW ───────────────────────────────────────────────── */}
+      {view === "stats" && (
+        <>
+          {!stats ? (
+            <Card><p className="text-zinc-500 text-sm text-center py-4">No shots logged yet. Hit some balls first.</p></Card>
+          ) : (
+            <>
+              {/* Summary */}
+              <Card className="border-emerald-900/30">
+                <SectionLabel>Session Summary — {stats.total} shots</SectionLabel>
+                <div className="grid grid-cols-2 gap-3 mt-3">
+                  <div className="rounded-xl bg-zinc-800 p-4 text-center">
+                    <p className="text-zinc-500 text-xs mb-1">Shape Accuracy</p>
+                    <p className={`font-black text-2xl ${stats.shapeHits/stats.total >= 0.7 ? "text-emerald-400" : stats.shapeHits/stats.total >= 0.5 ? "text-amber-400" : "text-rose-400"}`}>
+                      {Math.round(stats.shapeHits / stats.total * 100)}%
+                    </p>
+                    <p className="text-zinc-600 text-xs mt-0.5">{stats.shapeHits}/{stats.total} intended</p>
+                  </div>
+                  <div className="rounded-xl bg-zinc-800 p-4 text-center">
+                    <p className="text-zinc-500 text-xs mb-1">Proximity Hit %</p>
+                    <p className={`font-black text-2xl ${stats.proxHits/stats.total >= 0.5 ? "text-emerald-400" : stats.proxHits/stats.total >= 0.3 ? "text-amber-400" : "text-rose-400"}`}>
+                      {Math.round(stats.proxHits / stats.total * 100)}%
+                    </p>
+                    <p className="text-zinc-600 text-xs mt-0.5">{stats.proxHits}/{stats.total} within SG window</p>
+                  </div>
+                </div>
+                {stats.avgActual !== null && (
+                  <div className="mt-3 rounded-xl bg-zinc-800 p-3 text-center">
+                    <p className="text-zinc-500 text-xs">Avg Actual Carry (recorded shots)</p>
+                    <p className="text-white font-black text-xl mt-0.5">{stats.avgActual} yds</p>
+                  </div>
+                )}
+              </Card>
+
+              {/* Miss pattern breakdown — lateral vs depth */}
+              <Card>
+                <SectionLabel>Miss Pattern</SectionLabel>
+                <p className="text-zinc-600 text-xs mt-0.5 mb-3">A shot can appear in multiple categories (e.g. Short + Left)</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <p className="text-zinc-500 text-xs font-semibold mb-2">Lateral</p>
+                    {PROX_LATERAL.map(p => {
+                      const count = stats.missCounts[p.value] || 0;
+                      const pct = Math.round(count / stats.total * 100);
+                      return (
+                        <div key={p.value} className="mb-2">
+                          <div className="flex justify-between text-xs mb-0.5">
+                            <span className={count > 0 ? "text-zinc-200 font-semibold" : "text-zinc-600"}>{p.label}</span>
+                            <span className="text-zinc-500">{count} · {pct}%</span>
+                          </div>
+                          <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                            <div className={`h-full rounded-full ${proxColorBar[p.value]}`} style={{ width: `${pct}%` }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div>
+                    <p className="text-zinc-500 text-xs font-semibold mb-2">Depth</p>
+                    {PROX_DEPTH.map(p => {
+                      const count = stats.missCounts[p.value] || 0;
+                      const pct = Math.round(count / stats.total * 100);
+                      return (
+                        <div key={p.value} className="mb-2">
+                          <div className="flex justify-between text-xs mb-0.5">
+                            <span className={count > 0 ? "text-zinc-200 font-semibold" : "text-zinc-600"}>{p.label}</span>
+                            <span className="text-zinc-500">{count} · {pct}%</span>
+                          </div>
+                          <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                            <div className={`h-full rounded-full ${proxColorBar[p.value]}`} style={{ width: `${pct}%` }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+                <div className="mt-3 p-2.5 rounded-lg bg-zinc-800/60 border border-zinc-700/40 text-xs text-zinc-500">
+                  <span className="text-zinc-400 font-semibold">SG Standard: </span>
+                  Windows scale by distance — 50y allows ±5y; 200y allows ±26y lateral / ±20y depth.
+                </div>
+              </Card>
+
+              {/* Shape breakdown */}
+              <Card>
+                <SectionLabel>Shape Results</SectionLabel>
+                <div className="mt-3 space-y-2">
+                  {SHAPE_RESULTS.map(s => {
+                    const count = stats.shapeCounts[s] || 0;
+                    const pct = Math.round(count / stats.total * 100);
+                    const meta = SHAPE_RESULT_META[s];
+                    return (
+                      <div key={s}>
+                        <div className="flex justify-between text-xs mb-0.5">
+                          <span className={count > 0 ? "text-zinc-200 font-semibold" : "text-zinc-600"}>{s}</span>
+                          <span className="text-zinc-500">{count} · {pct}%</span>
+                        </div>
+                        <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                          <div className={`h-full rounded-full ${shapeBarColors[meta.color]}`} style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Card>
+
+              {/* Dispersion reference */}
+              <Card>
+                <SectionLabel>SG Dispersion Reference</SectionLabel>
+                <div className="mt-2 text-xs">
+                  <div className="grid grid-cols-3 gap-x-2 text-zinc-600 font-semibold pb-1 border-b border-zinc-800">
+                    <span>Distance</span><span className="text-center">Lateral ±</span><span className="text-center">Depth ±</span>
+                  </div>
+                  {SG_DISPERSIONS.filter(d => d.maxDist !== Infinity).map((d, i) => {
+                    const prev = i === 0 ? 0 : SG_DISPERSIONS[i-1].maxDist + 1;
+                    return (
+                      <div key={i} className="grid grid-cols-3 gap-x-2 py-1 border-b border-zinc-800/40 last:border-0 text-zinc-400">
+                        <span>{prev}–{d.maxDist}y</span><span className="text-center">{d.lat}y</span><span className="text-center">{d.dep}y</span>
+                      </div>
+                    );
+                  })}
+                  <div className="grid grid-cols-3 gap-x-2 py-1 text-zinc-400">
+                    <span>250y+</span><span className="text-center">38y</span><span className="text-center">30y</span>
+                  </div>
+                </div>
+              </Card>
+            </>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── APP SHELL ─────────────────────────────────────────────────────────────────
+
+const TABS = [
+  { id: "strike",     label: "Face Strike",  icon: "⛳" },
+  { id: "direction",  label: "Direction",    icon: "🎯" },
+  { id: "randomizer", label: "Randomizer",   icon: "🎲" },
+  { id: "settings",   label: "Settings",     icon: "⚙" },
+];
+
+function App() {
+  const [tab, setTab] = useState("strike");
+  const [webhookUrl, setWebhookUrl] = useLocalStorage("webhook_url", "");
+
+  const [sheetsToast, setSheetsToast] = useState(null); // "pushing" | "ok" | { error }
+
+  // Central export handler — pushes to Sheets if webhook configured, else shows CSV modal
+  async function openExport(rows, sheetName) {
+    if (!rows || rows.length === 0) return;
+    const filename = `${sheetName.replace(/\s+/g, "-").toLowerCase()}-${today()}.csv`;
+
+    if (!webhookUrl) {
+      // No webhook — download CSV directly (we're in a real browser!)
+      const csv = buildCSV(rows);
+      if (csv) downloadCSV(csv, filename);
+      return;
+    }
+
+    // Push to Sheets
+    setSheetsToast("pushing");
+    try {
+      const result = await pushToSheets(webhookUrl, sheetName, rows);
+      setSheetsToast(result.ok ? "ok" : { error: result.error });
+    } catch (e) {
+      setSheetsToast({ error: e.message || "Network error" });
+    }
+    setTimeout(() => setSheetsToast(null), 4000);
+  }
+
+  return (
+    <div className="min-h-screen bg-zinc-950 text-white" style={{ fontFamily: "'Georgia', 'Times New Roman', serif" }}>
+
+
+      {sheetsToast && <SheetsToast status={sheetsToast} onClose={() => setSheetsToast(null)} />}
+
+      {/* Top header */}
+      <div className="sticky top-0 z-10 bg-zinc-950/95 backdrop-blur border-b border-zinc-800/80">
+        <div className="max-w-lg mx-auto px-4 py-3">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h1 className="text-lg font-black tracking-tight text-white">Golf Practice Tracker</h1>
+              <p className="text-zinc-600 text-xs">
+                Technical Drill Suite
+                {webhookUrl && <span className="ml-2 text-emerald-600">● Sheets connected</span>}
+              </p>
+            </div>
+            <div className="w-9 h-9 rounded-xl bg-emerald-900/60 border border-emerald-700/50 flex items-center justify-center text-lg">⛳</div>
+          </div>
+
+          {/* Tab bar */}
+          <div className="grid grid-cols-4 gap-1 bg-zinc-900 p-1 rounded-xl">
+            {TABS.map(t => (
+              <button key={t.id} onClick={() => setTab(t.id)}
+                className={`py-2 px-1 rounded-lg text-xs font-bold transition-all ${tab === t.id ? "bg-zinc-700 text-white" : "text-zinc-500 hover:text-zinc-300"}`}>
+                <span className="mr-0.5">{t.icon}</span> {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="max-w-lg mx-auto px-4 py-6 pb-12">
+        {tab === "strike"     && <FaceStrikeModule openExport={openExport} />}
+        {tab === "direction"  && <FaceDirectionModule openExport={openExport} />}
+        {tab === "randomizer" && <ShotRandomizerModule openExport={openExport} />}
+        {tab === "settings"   && <SettingsTab webhookUrl={webhookUrl} setWebhookUrl={setWebhookUrl} />}
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
